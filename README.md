@@ -55,7 +55,7 @@ Web: Streamlit
 📂 Repository Structure
 app.py: The main web application script.
 
-kcet_model_turbo.pkl: The trained AI model.
+kcet_model_slim.pkl: The trained AI model.
 
 kcet_ai_ready.csv: The cleaned master dataset.
 
