@@ -6,7 +6,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 # 1. Setup & Assets
-st.set_page_config(page_title="KCET College Predictor (Engineering)", page_icon="🎓", layout="centered")
+st.set_page_config(page_title="KCET College Predictor 2026 (Engineering)", page_icon="🎓", layout="centered")
 
 st.markdown("""
     <style>
