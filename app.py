@@ -138,29 +138,50 @@ if st.session_state.results_df is not None:
         # FEATURE 2: College Comparison Tool
         st.markdown("---")
         st.subheader("⚖️ Compare College Trends")
-        selected_colls = st.multiselect("Select up to 2 colleges to compare:", 
+        st.write("Select up to 2 colleges to see their 2026 forecast trajectories.")
+        
+        selected_colls = st.multiselect("Select colleges to compare:", 
                                        st.session_state.results_df['College'].tolist(), 
                                        max_selections=2)
         
         if selected_colls:
             fig = go.Figure()
             colors = ['#007bff', '#e83e8c']
+            forecast_notes = []
             
             for i, c_name in enumerate(selected_colls):
                 h = df[(df['CollegeName'] == c_name) & (df['CourseName'] == u_cour) & 
                        (df['Base_Category'] == u_cat) & (df['Region'] == u_reg)].sort_values('Year')
                 
-                # History
-                fig.add_trace(go.Scatter(x=h['Year'], y=h['Cutoff_Rank'], name=f"{c_name} (Hist)",
-                                         line=dict(color=colors[i], width=2)))
-                
-                # Forecast
-                p_val = st.session_state.results_df[st.session_state.results_df['College'] == c_name]["Avg Cutoff"].values[0]
-                fig.add_trace(go.Scatter(x=[2025, 2026], y=[h['Cutoff_Rank'].iloc[-1] if not h.empty else p_val, p_val],
-                                         name=f"{c_name} (2026 Forecast)", line=dict(color=colors[i], width=4, dash='dash')))
-            
-            fig.update_layout(title="Cutoff Comparison", yaxis_title="Rank", hovermode="x unified")
+                if not h.empty:
+                    # History
+                    fig.add_trace(go.Scatter(x=h['Year'], y=h['Cutoff_Rank'], name=f"{c_name} (History)",
+                                             mode='lines+markers', line=dict(color=colors[i], width=2)))
+                    
+                    # Forecast
+                    p_val = st.session_state.results_df[st.session_state.results_df['College'] == c_name]["Avg Cutoff"].values[0]
+                    fig.add_trace(go.Scatter(x=[2025, 2026], y=[h['Cutoff_Rank'].iloc[-1], p_val],
+                                             mode='lines+markers+text',
+                                             name=f"{c_name} (2026 Forecast)", 
+                                             text=["", f"<b>{int(p_val)}</b>"],
+                                             textposition="top center",
+                                             line=dict(color=colors[i], width=4, dash='dash')))
+                    
+                    forecast_notes.append(f"AI predicts **{c_name}** 2026 cutoff around: **{int(p_val)}**")
+                else:
+                    st.warning(f"Not enough historical data to generate a forecast for {c_name}.")
+
+            fig.update_layout(title="Cutoff Comparison & 2026 Forecast", 
+                              xaxis=dict(tickmode='linear', dtick=1),
+                              yaxis_title="Rank", 
+                              hovermode="x unified")
             st.plotly_chart(fig, use_container_width=True)
+            
+            # RE-ADDED: The Success messages for the forecasts
+            for note in forecast_notes:
+                st.success(note)
+        else:
+            st.info("Pick a college from the list above to view the trend graph.")
 
 # Display Top 5 Best Fit
 if st.session_state.top_5_df is not None:
