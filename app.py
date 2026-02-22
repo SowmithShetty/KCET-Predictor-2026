@@ -24,7 +24,7 @@ st.markdown("""
 
 @st.cache_resource
 def load_assets():
-    model = joblib.load('kcet_model_turbo.pkl')
+    model = joblib.load('kcet_model_slim.pkl')
     le_coll = joblib.load('encoder_college.pkl')
     le_cour = joblib.load('encoder_course.pkl')
     le_cat = joblib.load('encoder_base_cat.pkl')
