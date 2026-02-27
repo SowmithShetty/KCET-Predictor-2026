@@ -4,3 +4,5 @@ joblib
 scikit-learn
 plotly
 streamlit-feedback
+fpdf
+
