@@ -4,49 +4,125 @@ import joblib
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from fpdf import FPDF  # Ensure 'fpdf' is in requirements.txt
 
-# --- PDF GENERATION HELPER ---
-def create_pdf(df_to_print, user_details):
-    pdf = FPDF()
-    pdf.add_page()
+# 1. Setup & Assets
+st.set_page_config(page_title="KCET 2026 Pro Predictor", page_icon="🎓", layout="centered")
+
+st.markdown("""
+    <style>
+    .main { background-color: #f8f9fa; }
+    div.stButton > button:first-child {
+        background-color: #28a745;
+        color: white;
+        border-radius: 6px;
+        font-weight: bold;
+        height: 3em;
+        width: 100%;
+    }
+    .difficulty-tag { font-weight: bold; padding: 2px 8px; border-radius: 4px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+@st.cache_resource
+def load_assets():
+    model = joblib.load('kcet_model_slim.pkl')
+    le_coll = joblib.load('encoder_college.pkl')
+    le_cour = joblib.load('encoder_course.pkl')
+    le_cat = joblib.load('encoder_base_cat.pkl')
+    le_quot = joblib.load('encoder_quota.pkl')
+    le_reg = joblib.load('encoder_region.pkl')
+    df = pd.read_csv('kcet_ai_ready.csv')
+    return model, le_coll, le_cour, le_cat, le_quot, le_reg, df
+
+model, le_coll, le_cour, le_cat, le_quot, le_reg, df = load_assets()
+
+# Initialize Session States
+if 'results_df' not in st.session_state: st.session_state.results_df = None
+if 'top_5_df' not in st.session_state: st.session_state.top_5_df = None
+
+# Helper: Calculate Difficulty Score
+def get_difficulty(college, course, cat, reg):
+    hist = df[(df['CollegeName'] == college) & (df['CourseName'] == course) & 
+              (df['Base_Category'] == cat) & (df['Region'] == reg)].sort_values('Year')
+    if len(hist) < 2: return "⚪ Stable"
     
-    # Title
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, txt="KCET 2026 College Prediction Report", ln=True, align='C')
+    first = hist['Cutoff_Rank'].iloc[0]
+    last = hist['Cutoff_Rank'].iloc[-1]
+    change = ((last - first) / first) * 100
     
-    # User Details
-    pdf.set_font("Arial", size=10)
-    pdf.ln(10)
-    pdf.cell(200, 10, txt=f"Student Rank: {user_details['rank']} | Category: {user_details['cat']} | Target Branch: {user_details['branch']}", ln=True)
-    pdf.ln(5)
+    if change < -5: return "🔴 Getting Harder"
+    elif change > 5: return "🟢 Getting Easier"
+    else: return "🔵 Stable"
 
-    # Table Header
-    pdf.set_fill_color(40, 167, 69) # GitHub Green
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Arial", 'B', 10)
-    pdf.cell(110, 10, " College Name", 1, 0, 'L', True)
-    pdf.cell(45, 10, " Safety Range", 1, 0, 'L', True)
-    pdf.cell(35, 10, " Status", 1, 1, 'L', True)
+# 2. Sidebar
+with st.sidebar:
+    st.header("📋 Student Profile")
+    u_rank = st.number_input("Your Rank", min_value=1, value=25000)
+    u_reg = st.selectbox("Region", le_reg.classes_)
+    u_cat = st.selectbox("Category", le_cat.classes_)
+    u_quot = st.selectbox("Quota", le_quot.classes_)
+    u_cour = st.selectbox("Target Branch", sorted(le_cour.classes_))
+    
+    predict_btn = st.button("🚀 Predict for 2026")
+    best_fit_btn = st.button("📍 Find My Best Fit (All Branches)")
 
-    # Table Body
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Arial", size=9)
-    for _, row in df_to_print.iterrows():
-        # Shorten name if too long for PDF cell
-        c_name = (row['College'][:60] + '..') if len(row['College']) > 60 else row['College']
-        pdf.cell(110, 10, f" {c_name}", 1)
-        pdf.cell(45, 10, f" {row['Safety Range']}", 1)
-        pdf.cell(35, 10, f" {row['Status']}", 1)
-        pdf.ln()
+# 3. Logic: Single Branch Prediction
+if predict_btn:
+    st.session_state.top_5_df = None
+    with st.spinner('Analyzing trends...'):
+        targets = df[df['CourseName'] == u_cour].drop_duplicates('CollegeName')
+        preds = []
+        for _, row in targets.iterrows():
+            try:
+                feat = np.array([[le_coll.transform([row['CollegeName']])[0], 
+                                 le_cour.transform([u_cour])[0], le_cat.transform([u_cat])[0],
+                                 le_quot.transform([u_quot])[0], le_reg.transform([u_reg])[0], 2026]])
+                p_rank = np.expm1(model.predict(feat))[0]
+                
+                if u_rank <= (p_rank * 1.4):
+                    status = "✅ High Chance" if u_rank <= p_rank else "🟡 Borderline"
+                    diff = get_difficulty(row['CollegeName'], u_cour, u_cat, u_reg)
+                    
+                    # FEATURE 1: Safety Range (±10%)
+                    range_str = f"{int(p_rank*0.9):,} - {int(p_rank*1.1):,}"
+                    
+                    preds.append({
+                        "College": row['CollegeName'], 
+                        "Safety Range": range_str,
+                        "Avg Cutoff": int(p_rank),
+                        "Status": status,
+                        "Trend": diff # FEATURE 5: Difficulty Score
+                    })
+            except: continue
+        st.session_state.results_df = pd.DataFrame(preds).sort_values("Avg Cutoff") if preds else "No Matches"
+
+# 4. Logic: Top 5 Best Fit (FEATURE 4)
+if best_fit_btn:
+    st.session_state.results_df = None
+    with st.spinner('Scanning all branches for best matches...'):
+        all_colleges = df.drop_duplicates(['CollegeName', 'CourseName']).sample(150) # Sampled for speed
+        fits = []
+        for _, row in all_colleges.iterrows():
+            try:
+                feat = np.array([[le_coll.transform([row['CollegeName']])[0], 
+                                 le_cour.transform([row['CourseName']])[0], le_cat.transform([u_cat])[0],
+                                 le_quot.transform([u_quot])[0], le_reg.transform([u_reg])[0], 2026]])
+                p_rank = np.expm1(model.predict(feat))[0]
+                
+                # Find colleges where predicted cutoff is just above user rank
+                if p_rank >= u_rank:
+                    fits.append({
+                        "College": row['CollegeName'],
+                        "Branch": row['CourseName'],
+                        "Est. Cutoff": int(p_rank),
+                        "Match Score": int(p_rank - u_rank)
+                    })
+            except: continue
         
-    pdf.ln(10)
-    pdf.set_font("Arial", 'I', 8)
-    pdf.cell(200, 10, txt="Generated by KCET AI Predictor. Values are estimates based on historical trends.", ln=True, align='C')
-    
-    return pdf.output(dest='S').encode('latin-1')
-
-# ... (Keep your existing Assets Loading and Sidebar Logic here) ...
+        if fits:
+            st.session_state.top_5_df = pd.DataFrame(fits).sort_values("Match Score").head(5)
+        else:
+            st.session_state.top_5_df = "No Matches"
 
 # 5. Main UI Display
 st.title("🎓 KCET 2026 College Predictor")
@@ -59,19 +135,6 @@ if st.session_state.results_df is not None:
         st.subheader(f"📍 Recommended Colleges for {u_cour}")
         st.dataframe(st.session_state.results_df, use_container_width=True, hide_index=True)
         
-        # --- NEW: PDF DOWNLOAD BUTTON ---
-        user_info = {'rank': u_rank, 'cat': u_cat, 'branch': u_cour}
-        try:
-            pdf_bytes = create_pdf(st.session_state.results_df, user_info)
-            st.download_button(
-                label="📥 Download Recommendation Report (PDF)",
-                data=pdf_bytes,
-                file_name=f"KCET_2026_Report_{u_rank}.pdf",
-                mime="application/pdf"
-            )
-        except Exception as e:
-            st.error("Could not generate PDF. Check if all data is loaded.")
-
         # FEATURE 2: College Comparison Tool
         st.markdown("---")
         st.subheader("⚖️ Compare College Trends")
@@ -114,6 +177,7 @@ if st.session_state.results_df is not None:
                               hovermode="x unified")
             st.plotly_chart(fig, use_container_width=True)
             
+            # RE-ADDED: The Success messages for the forecasts
             for note in forecast_notes:
                 st.success(note)
         else:
@@ -126,9 +190,6 @@ if st.session_state.top_5_df is not None:
     else:
         st.success("🎯 Here are the Top 5 best colleges you can get based on your rank!")
         st.table(st.session_state.top_5_df[["College", "Branch", "Est. Cutoff"]])
-        
-        # Optional: Add a PDF button for Top 5 as well
-        # (You can repeat the PDF logic here if you want a separate report for Top 5)
 
 # FEATURE 3: User Feedback Loop
 st.markdown("---")
