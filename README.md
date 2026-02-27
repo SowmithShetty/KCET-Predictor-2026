@@ -6,7 +6,7 @@ The KCET College Predictor 2026 is a machine learning-based web application desi
 ✨ Key Features
 Predictive Intelligence: Forecasts the 2026 cutoff rank rather than just showing last year's data.
 
-Interactive Trend Analysis: Dynamic Plotly line charts showing the "Cutoff Journey" from 2023 to 2026.
+Interactive Trend Analysis: Dynamic Plotly line charts showing the "Cutoff Journey" from 2023 to 2025.
 
 Comprehensive Filters: Full support for:
 
