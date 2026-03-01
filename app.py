@@ -84,7 +84,7 @@ def create_pdf(df_to_print, user_details):
         # Signature / Credit
         pdf.ln(5)
         pdf.set_font("Arial", 'B', 9)
-        pdf.cell(0, 10, txt="Developed by Gemini & KCET AI Predictor Team", ln=True, align='C')
+        pdf.cell(0, 10, txt="Developed by KCET AI Predictor Team", ln=True, align='C')
         
         return pdf.output(dest='S').encode('latin-1')
     except Exception as e:
